@@ -1,5 +1,9 @@
 import 'dart:convert';
+import 'dart:developer';
 import 'dart:io';
+import 'package:Face_recognition/PersonData.dart';
+import 'package:Face_recognition/person.dart';
+import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:camera/camera.dart';
 import 'package:firebase_ml_vision/firebase_ml_vision.dart';
@@ -10,6 +14,7 @@ import 'package:image/image.dart' as imglib;
 import 'package:tflite_flutter/tflite_flutter.dart' as tfl;
 import 'package:quiver/collection.dart';
 import 'package:flutter/services.dart';
+import 'persist.dart';
 
 void main() {
   runApp(MaterialApp(
@@ -27,18 +32,22 @@ class _MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<_MyHomePage> {
-  File jsonFile;
+  // File jsonFile;
   dynamic _scanResults;
   CameraController _camera;
   var interpreter;
   bool _isDetecting = false;
   CameraLensDirection _direction = CameraLensDirection.front;
-  dynamic data = {};
+  // dynamic data = {};
   double threshold = 1.0;
   Directory tempDir;
   List e1;
+  // List<PersonData> listPd;
   bool _faceFound = false;
   final TextEditingController _name = new TextEditingController();
+
+  List<Person> listPerson = [];
+
   @override
   void initState() {
     super.initState();
@@ -80,10 +89,13 @@ class _MyHomePageState extends State<_MyHomePage> {
         CameraController(description, ResolutionPreset.low, enableAudio: false);
     await _camera.initialize();
     await Future.delayed(Duration(milliseconds: 500));
-    tempDir = await getApplicationDocumentsDirectory();
-    String _embPath = tempDir.path + '/emb.json';
-    jsonFile = new File(_embPath);
-    if (jsonFile.existsSync()) data = json.decode(jsonFile.readAsStringSync());
+
+    // tempDir = await getApplicationDocumentsDirectory();
+    // String _embPath = tempDir.path + '/emb.json';
+    // jsonFile = new File(_embPath);
+    // if (jsonFile.existsSync()) data = json.decode(jsonFile.readAsStringSync());
+    listPerson = await DbProvider.db.getAll();
+    // listPd = convertToPersonData(listPerson);
 
     _camera.startImageStream((CameraImage image) {
       if (_camera != null) {
@@ -196,7 +208,7 @@ class _MyHomePageState extends State<_MyHomePage> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext buildContext) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Face recognition'),
@@ -206,7 +218,7 @@ class _MyHomePageState extends State<_MyHomePage> {
               if (result == Choice.delete)
                 _resetFile();
               else
-                _viewLabels();
+                _viewLabels(buildContext);
             },
             itemBuilder: (BuildContext context) => <PopupMenuEntry<Choice>>[
               const PopupMenuItem<Choice>(
@@ -228,7 +240,7 @@ class _MyHomePageState extends State<_MyHomePage> {
           backgroundColor: (_faceFound) ? Colors.blue : Colors.blueGrey,
           child: Icon(Icons.add),
           onPressed: () {
-            if (_faceFound) _addLabel();
+            if (_faceFound) _addLabel(buildContext);
           },
           heroTag: null,
         ),
@@ -291,15 +303,16 @@ class _MyHomePageState extends State<_MyHomePage> {
   }
 
   String compare(List currEmb) {
-    if (data.length == 0) return "No Face saved";
+    if (listPerson.isEmpty) return "No Face saved";
     double minDist = 999;
     double currDist = 0.0;
     String predRes = "NOT RECOGNIZED";
-    for (String label in data.keys) {
-      currDist = euclideanDistance(data[label], currEmb);
+    for (Person person in listPerson) {
+      // log("loadEmbedding >> " + person.embedding.toString());
+      currDist = euclideanDistance(loadEmbedding(person), currEmb);
       if (currDist <= threshold && currDist < minDist) {
         minDist = currDist;
-        predRes = label;
+        predRes = person.name;
       }
     }
     print(minDist.toString() + " " + predRes);
@@ -307,11 +320,14 @@ class _MyHomePageState extends State<_MyHomePage> {
   }
 
   void _resetFile() {
-    data = {};
-    jsonFile.deleteSync();
+    // data = {};
+    // jsonFile.deleteSync();
+
+    print("Delete All");
+    DbProvider.db.deleteAll();
   }
 
-  void _viewLabels() {
+  void _viewLabels(BuildContext context) {
     setState(() {
       _camera = null;
     });
@@ -320,9 +336,9 @@ class _MyHomePageState extends State<_MyHomePage> {
       title: new Text("Saved Faces"),
       content: new ListView.builder(
           padding: new EdgeInsets.all(2),
-          itemCount: data.length,
+          itemCount: listPerson.length,
           itemBuilder: (BuildContext context, int index) {
-            name = data.keys.elementAt(index);
+            name = listPerson.elementAt(index).name;
             return new Column(
               children: <Widget>[
                 new ListTile(
@@ -358,7 +374,7 @@ class _MyHomePageState extends State<_MyHomePage> {
         });
   }
 
-  void _addLabel() {
+  void _addLabel(BuildContext context) {
     setState(() {
       _camera = null;
     });
@@ -402,8 +418,14 @@ class _MyHomePageState extends State<_MyHomePage> {
   }
 
   void _handle(String text) {
-    data[text] = e1;
-    jsonFile.writeAsStringSync(json.encode(data));
+    // data[text] = e1;
+    // jsonFile.writeAsStringSync(json.encode(data));
+
+    // using sqflite
+    String strEmbedding = saveEmbedding(e1);
+    log("strEmbedding >> " + strEmbedding);
+    Person newPerson = Person(name: text,embedding: strEmbedding);
+    DbProvider.db.newPerson(newPerson);
     _initializeCamera();
   }
 }

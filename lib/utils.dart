@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:math';
 import 'dart:typed_data';
 import 'dart:ui';
+import 'package:Face_recognition/PersonData.dart';
+import 'package:Face_recognition/person.dart';
 import 'package:camera/camera.dart';
 import 'package:firebase_ml_vision/firebase_ml_vision.dart';
 import 'package:image/image.dart' as imglib;
@@ -86,4 +88,29 @@ double euclideanDistance(List e1, List e2) {
     sum += pow((e1[i] - e2[i]), 2);
   }
   return sqrt(sum);
+}
+
+List<num> loadEmbedding(Person p){
+  List<String> str = p.embedding
+      .split("~");
+  return str.map((e) => num.parse(e)).toList();
+}
+
+String saveEmbedding(List<dynamic> e1){
+  StringBuffer sb = new StringBuffer();
+  sb.writeAll(e1,"~");
+  return sb.toString();
+}
+
+List<PersonData> convertToPersonData(List<Person> list){
+  List<PersonData> res = [];
+  for(Person p in list){
+    PersonData pd = new PersonData();
+    pd.id = p.id;
+    pd.name = p.name;
+    pd.nik = p.nik;
+    pd.embedding = loadEmbedding(p);
+    res.add(pd);
+  }
+  return res;
 }
